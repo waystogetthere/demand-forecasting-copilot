@@ -1,0 +1,15 @@
+# Data — too large for GitHub
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Environment
+.venv/
+*.egg-info/
+
+# OS
+.DS_Store
