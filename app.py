@@ -1,11 +1,10 @@
+import math
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from src.data_loader import build_dataset, get_available_categories, get_available_stores
-from src.forecaster import train_forecast, summarise_forecast
+from src.forecaster import train_forecast, summarise_forecast, compute_shap, summarise_shap, FEATURE_LABELS, FEATURE_COLS
 from src.llm_explainer import generate_summary, answer_question
-
-from src.forecaster import train_forecast, summarise_forecast, compute_shap, summarise_shap
 
 # ── Page config ──────────────────────────────────────────────
 st.set_page_config(
@@ -62,7 +61,8 @@ if run:
     st.session_state.chat_history = []
     st.session_state.config = {
             "category": category, "store": store, "mae": mae,
-            "importance": importance, "shap_summary": shap_summary
+            "importance": importance, "shap_summary": shap_summary,
+            "horizon": horizon, "shap_df": shap_df,
         }
 
 # ── Main content ──────────────────────────────────────────────
@@ -92,6 +92,42 @@ if st.session_state.forecast_df is not None:
             delta=delta
         )
 
+    # ── Restock Recommendations ───────────────────────────────
+    horizon_days = config["horizon"]
+    st.subheader("📦 Restock Recommendations")
+    st.caption(f"Based on {horizon_days}-day forecast horizon")
+    restock_rows = []
+    for item_id, stats in summary.items():
+        pred_avg = stats["predicted_avg_daily"]
+        pct = stats["pct_change"]
+        if pct > 5:
+            trend = "↑ Increasing"
+        elif pct < -5:
+            trend = "↓ Decreasing"
+        else:
+            trend = "→ Stable"
+        if pred_avg > 1.0:
+            priority = "🔴 High"
+        elif pred_avg > 0.5:
+            priority = "🟡 Medium"
+        else:
+            priority = "🟢 Low"
+        restock_rows.append({
+            "Item": item_id.replace("_", " "),
+            "Predicted demand (units/day)": pred_avg,
+            f"Suggested restock (units, {horizon_days}-day)": math.ceil(pred_avg * horizon_days),
+            "Trend": trend,
+            "Priority": priority,
+        })
+    restock_df = pd.DataFrame(restock_rows)
+    st.dataframe(restock_df, hide_index=True, use_container_width=True)
+    st.download_button(
+        label="Download as CSV",
+        data=restock_df.to_csv(index=False).encode("utf-8"),
+        file_name="restock_recommendations.csv",
+        mime="text/csv",
+    )
+
     # ── Forecast chart ────────────────────────────────────────
     st.subheader("📈 Forecast vs Actual")
     items = forecast_df["item_id"].unique().tolist()
@@ -119,22 +155,18 @@ if st.session_state.forecast_df is not None:
 
     # ── Model info ────────────────────────────────────────────
     with st.expander("🔍 Model Details"):
-            col1, col2, col3 = st.columns(3)
-            col1.metric("MAE", f"{config['mae']:.3f} units")
-            col2.dataframe(
-                config["importance"].head(8).reset_index()
-                .rename(columns={"index": "Feature", 0: "Importance"}),
-                hide_index=True,
-                use_container_width=True
-            )
-            # SHAP summary per item
-            col3.markdown("**Top SHAP drivers**")
-            for item_id, drivers in config["shap_summary"].items():
-                lines = ", ".join(
-                    f"{f.replace('_', ' ')} {'+' if v > 0 else ''}{v}"
-                    for f, v in drivers.items()
-                )
-                col3.caption(f"**{item_id}:** {lines}")
+        mae = config["mae"]
+        st.markdown(
+            f"**MAE: {mae:.2f} units/day** — on average, forecasts are within "
+            f"{mae:.2f} units of actual sales"
+        )
+        st.markdown("**Top 5 factors influencing sales**")
+        shap_df_stored = config["shap_df"]
+        mean_abs_shap = shap_df_stored[FEATURE_COLS].abs().mean()
+        top5_feats = mean_abs_shap.nlargest(5).index
+        for rank, feat in enumerate(top5_feats, start=1):
+            label = FEATURE_LABELS.get(feat, feat.replace("_", " "))
+            st.markdown(f"{rank}. {label}")
     # ── Q&A ───────────────────────────────────────────────────
     st.subheader("💬 Ask the Copilot")
 

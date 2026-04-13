@@ -42,6 +42,25 @@ def make_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+FEATURE_LABELS = {
+    "roll_mean_7": "Recent 7-day sales trend",
+    "roll_mean_14": "Recent 14-day sales trend",
+    "roll_mean_28": "Monthly sales baseline",
+    "roll_std_7": "Recent demand volatility",
+    "lag_7": "Sales same day last week",
+    "lag_14": "Sales same day 2 weeks ago",
+    "lag_28": "Sales same day last month",
+    "has_event": "Holiday / promotion effect",
+    "snap": "Food assistance program day",
+    "sell_price": "Product price",
+    "is_weekend": "Weekend effect",
+    "dayofweek": "Day of week",
+    "dayofmonth": "Day of month",
+    "weekofyear": "Week of year",
+    "month": "Month",
+    "year": "Year"
+}
+
 FEATURE_COLS = [
     "lag_7", "lag_14", "lag_28",
     "roll_mean_7", "roll_mean_14", "roll_mean_28",
