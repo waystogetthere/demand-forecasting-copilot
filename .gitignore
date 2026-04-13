@@ -10,6 +10,11 @@ __pycache__/
 *.pyc
 *.pyo
 .env
+test_day1.py
+prepare_data.py
+
+# Prompt
+prompt.txt
 
 # Environment
 .venv/
