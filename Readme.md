@@ -3,7 +3,7 @@
 Demand forecasting for supply chain operations. Combines LightGBM time-series forecasting with Claude AI to generate
 actionable insights for operations teams — not just numbers, but recommendations.
 
-![Forecast Overview](assets/screenshot.png)
+![Forecast Overview](assets/preview.png)
 
 ## What it does
 
