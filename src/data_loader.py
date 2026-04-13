@@ -49,13 +49,3 @@ def get_available_categories() -> list:
 def get_available_stores() -> list:
     df = load_processed()
     return sorted(df["store_id"].unique().tolist())
-
-def get_available_categories(sales: pd.DataFrame = None) -> list:
-    if sales is None:
-        sales, _, _ = load_data()
-    return sorted(sales["cat_id"].unique().tolist())
-
-def get_available_stores(sales: pd.DataFrame = None) -> list:
-    if sales is None:
-        sales, _, _ = load_data()
-    return sorted(sales["store_id"].unique().tolist())
