@@ -4,6 +4,12 @@ from pathlib import Path
 
 DATA_DIR = Path("data")
 
+PROCESSED_PATH = Path("data/processed.parquet")
+
+def load_processed() -> pd.DataFrame:
+    """Load preprocessed parquet file."""
+    return pd.read_parquet(PROCESSED_PATH)
+
 def load_data():
     """Load and merge M5 datasets."""
     print("Loading sales data...")
@@ -22,28 +28,28 @@ def melt_sales(sales: pd.DataFrame) -> pd.DataFrame:
 
 def build_dataset(category: str = "FOODS", store: str = "CA_1",
                   max_items: int = 10) -> pd.DataFrame:
-    sales, calendar, prices = load_data()
+    """Load from preprocessed parquet and filter to category/store/items."""
+    df = load_processed()
 
-    mask = (sales["cat_id"] == category) & (sales["store_id"] == store)
-    sales_filtered = sales[mask].head(max_items)
+    mask = (df["cat_id"] == category) & (df["store_id"] == store)
+    df = df[mask].copy()
 
-    df = melt_sales(sales_filtered)
+    # Limit to max_items
+    items = df["item_id"].unique()[:max_items]
+    df = df[df["item_id"].isin(items)]
 
-    # Merge calendar
-    df = df.merge(calendar[["d", "date", "wday", "month", "year",
-                             "event_name_1", "event_type_1",
-                             "snap_CA", "snap_TX", "snap_WI"]],
-                  on="d", how="left")
-    df["date"] = pd.to_datetime(df["date"])
+    return df.sort_values(["item_id", "date"]).reset_index(drop=True)
 
-    # Aggregate prices to one row per (store_id, item_id) — use mean price
-    prices_agg = (prices.groupby(["store_id", "item_id"])["sell_price"]
-                        .mean()
-                        .reset_index())
-    df = df.merge(prices_agg, on=["store_id", "item_id"], how="left")
 
-    df = df.sort_values(["item_id", "date"]).reset_index(drop=True)
-    return df
+def get_available_categories() -> list:
+    df = load_processed()
+    return sorted(df["cat_id"].unique().tolist())
+
+
+def get_available_stores() -> list:
+    df = load_processed()
+    return sorted(df["store_id"].unique().tolist())
+
 def get_available_categories(sales: pd.DataFrame = None) -> list:
     if sales is None:
         sales, _, _ = load_data()
