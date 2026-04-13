@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from src.data_loader import build_dataset, load_data, get_available_categories, get_available_stores
+from src.data_loader import build_dataset, get_available_categories, get_available_stores
 from src.forecaster import train_forecast, summarise_forecast
 from src.llm_explainer import generate_summary, answer_question
-import shap
+
 from src.forecaster import train_forecast, summarise_forecast, compute_shap, summarise_shap
 
 # ── Page config ──────────────────────────────────────────────
@@ -21,9 +21,8 @@ st.caption("AI-powered demand forecasting for supply chain operations")
 with st.sidebar:
     st.header("Configuration")
 
-    sales_raw, _, _ = load_data()
-    categories = get_available_categories(sales_raw)
-    stores = get_available_stores(sales_raw)
+    categories = get_available_categories()
+    stores = get_available_stores()
 
     category = st.selectbox("Product Category", categories, index=categories.index("FOODS"))
     store = st.selectbox("Store", stores, index=0)

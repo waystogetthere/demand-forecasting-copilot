@@ -1,5 +1,9 @@
-# Data — too large for GitHub
-data/
+# Data — raw files too large for GitHub
+data/sales_train_validation.csv
+data/sales_train_evaluation.csv
+data/sell_prices.csv
+data/sample_submission.csv
+data/calendar.csv
 
 # Python
 __pycache__/
