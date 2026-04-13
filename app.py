@@ -81,21 +81,15 @@ if st.session_state.forecast_df is not None:
     cols = st.columns(len(summary))
     for col, (item_id, stats) in zip(cols, summary.items()):
         pct = stats["pct_change"]
-        if pct > 200:
-            delta = ">+200%"
-            delta_color = "normal"
-        elif pct < -200:
-            delta = ">-200%"
-            delta_color = "inverse"
+        if abs(pct) > 200:
+            delta = ">+200%" if pct > 0 else ">-200%"
         else:
             delta = f"{pct:+.1f}%"
-            delta_color = "inverse"
 
         col.metric(
             label=item_id.replace("_", " "),
             value=f"{stats['predicted_avg_daily']:.2f} units/day",
-            delta=delta,
-            delta_color=delta_color
+            delta=delta
         )
 
     # ── Forecast chart ────────────────────────────────────────
