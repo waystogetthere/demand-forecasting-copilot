@@ -119,26 +119,33 @@ def train_forecast(df: pd.DataFrame, horizon: int = 14):
     return forecast_df, mae, importance, model
 
 
-def summarise_forecast(forecast_df: pd.DataFrame) -> dict:
+def summarise_forecast(forecast_df: pd.DataFrame, full_df: pd.DataFrame, horizon: int) -> dict:
     """
     Aggregate forecast stats across all items.
-    Returns a dict for LLM consumption.
+    pct_change compares predicted window vs the equally-long prior window of actuals,
+    so it measures demand trend rather than model error.
     """
     summary = {}
     for item_id, grp in forecast_df.groupby("item_id"):
-        actual_mean = grp["sales"].mean()
         pred_mean = grp["predicted"].mean()
-        # pct_change = ((pred_mean - actual_mean) / (actual_mean + 1e-6)) * 100
-        pct_change = ((pred_mean - actual_mean) / (actual_mean + 1e-6)) * 100
-        pct_change = max(min(pct_change, 999.0), -999.0)  # cap at ±999%
+
+        forecast_start = grp["date"].min()
+        prior_start = forecast_start - pd.Timedelta(days=horizon)
+        prior_window = full_df[
+            (full_df["item_id"] == item_id) &
+            (full_df["date"] >= prior_start) &
+            (full_df["date"] < forecast_start)
+        ]
+        prior_mean = prior_window["sales"].mean() if len(prior_window) > 0 else pred_mean
+
+        pct_change = ((pred_mean - prior_mean) / (prior_mean + 1e-6)) * 100
+        pct_change = max(min(pct_change, 999.0), -999.0)
 
         summary[item_id] = {
-            "actual_avg_daily": round(actual_mean, 2),
+            "prior_avg_daily": round(prior_mean, 2),
             "predicted_avg_daily": round(pred_mean, 2),
             "pct_change": round(pct_change, 1),
             "total_predicted": round(grp["predicted"].sum(), 1),
-            "peak_day": grp.loc[grp["predicted"].idxmax(), "date"].strftime("%Y-%m-%d"),
-            "peak_predicted": round(grp["predicted"].max(), 2),
         }
     return summary
 

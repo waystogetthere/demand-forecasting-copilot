@@ -1,10 +1,12 @@
 import math
+import uuid
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from src.data_loader import build_dataset, get_available_categories, get_available_stores
 from src.forecaster import train_forecast, summarise_forecast, compute_shap, summarise_shap, FEATURE_LABELS, FEATURE_COLS
 from src.llm_explainer import generate_summary, answer_question
+from src.database import init_db, save_run, get_snap_lift
 
 # ── Page config ──────────────────────────────────────────────
 st.set_page_config(
@@ -41,29 +43,36 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "config" not in st.session_state:
     st.session_state.config = {}
+if "run_id" not in st.session_state:
+    st.session_state.run_id = None
 
 # ── Run forecast ──────────────────────────────────────────────
 if run:
     with st.spinner("Loading data and training model..."):
         df = build_dataset(category=category, store=store, max_items=max_items)
         forecast_df, mae, importance, model = train_forecast(df, horizon=horizon)
-        summary = summarise_forecast(forecast_df)
+        summary = summarise_forecast(forecast_df, df, horizon)
         shap_df = compute_shap(model, df)
         shap_summary = summarise_shap(shap_df)
 
     with st.spinner("Generating AI summary..."):
-            narrative = generate_summary(summary, category=category, store=store,
-                                        shap_summary=shap_summary)
+        narrative = generate_summary(summary, category=category, store=store,
+                                     shap_summary=shap_summary)
+
+    run_id = str(uuid.uuid4())[:8]
+    init_db()
+    save_run(run_id, summary, shap_df, mae, importance, category, store, horizon)
 
     st.session_state.forecast_df = forecast_df
     st.session_state.summary = summary
     st.session_state.narrative = narrative
     st.session_state.chat_history = []
+    st.session_state.run_id = run_id
     st.session_state.config = {
-            "category": category, "store": store, "mae": mae,
-            "importance": importance, "shap_summary": shap_summary,
-            "horizon": horizon, "shap_df": shap_df,
-        }
+        "category": category, "store": store, "mae": mae,
+        "importance": importance, "shap_summary": shap_summary,
+        "horizon": horizon, "shap_df": shap_df, "df": df,
+    }
 
 # ── Main content ──────────────────────────────────────────────
 if st.session_state.forecast_df is not None:
@@ -71,13 +80,40 @@ if st.session_state.forecast_df is not None:
     summary = st.session_state.summary
     narrative = st.session_state.narrative
     config = st.session_state.config
+    run_id = st.session_state.run_id
 
     # ── AI Summary ───────────────────────────────────────────
     st.subheader("🤖 AI Analysis")
     st.info(narrative)
 
+    # ── Seasonal Events ──────────────────────────────────────
+    try:
+        calendar = pd.read_csv("data/calendar.csv", parse_dates=["date"])
+        forecast_dates = pd.to_datetime(forecast_df["date"].unique())
+        cal_window = calendar[calendar["date"].isin(forecast_dates)]
+
+        events = cal_window[cal_window["event_name_1"].notna()]
+        snap_days = cal_window[cal_window["snap_CA"] == 1]
+
+        if len(events) > 0 or len(snap_days) > 0:
+            for _, row in events.iterrows():
+                st.warning(
+                    f"⚠️ {row['event_name_1']} ({row['date'].strftime('%Y-%m-%d')}) "
+                    f"falls within the forecast window."
+                )
+            if len(snap_days) > 0:
+                snap_info = get_snap_lift(run_id)
+                st.info(snap_info["interpretation"])
+    except FileNotFoundError:
+        pass
+
     # ── Metrics row ──────────────────────────────────────────
     st.subheader("📊 Forecast Overview")
+    horizon_days = config["horizon"]
+    st.caption(
+        f"% change compares predicted demand over the next {horizon_days} days "
+        f"vs actual demand over the prior {horizon_days} days."
+    )
     cols = st.columns(len(summary))
     for col, (item_id, stats) in zip(cols, summary.items()):
         pct = stats["pct_change"]
@@ -93,7 +129,6 @@ if st.session_state.forecast_df is not None:
         )
 
     # ── Restock Recommendations ───────────────────────────────
-    horizon_days = config["horizon"]
     st.subheader("📦 Restock Recommendations")
     st.caption(f"Based on {horizon_days}-day forecast horizon")
     restock_rows = []
@@ -167,31 +202,25 @@ if st.session_state.forecast_df is not None:
         for rank, feat in enumerate(top5_feats, start=1):
             label = FEATURE_LABELS.get(feat, feat.replace("_", " "))
             st.markdown(f"{rank}. {label}")
+
     # ── Q&A ───────────────────────────────────────────────────
     st.subheader("💬 Ask the Copilot")
 
-    # Display chat history
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Chat input
     if question := st.chat_input("e.g. Which item should I restock first?"):
-        # Show user message
         with st.chat_message("user"):
             st.markdown(question)
         st.session_state.chat_history.append({"role": "user", "content": question})
 
-        # Get and show assistant response
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                # Pass history excluding last user message
                 history_for_api = st.session_state.chat_history[:-1]
                 answer = answer_question(
                     question=question,
-                    summary=summary,
-                    category=config["category"],
-                    store=config["store"],
+                    run_id=run_id,
                     history=history_for_api if history_for_api else None
                 )
             st.markdown(answer)
@@ -199,5 +228,3 @@ if st.session_state.forecast_df is not None:
 
 else:
     st.info("👈 Configure your forecast in the sidebar and click **Run Forecast** to begin.")
-
-
